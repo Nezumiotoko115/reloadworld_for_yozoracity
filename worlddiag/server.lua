@@ -300,6 +300,21 @@ exports('EndReload', function(target, result)
                 started = result.stages.enhanced.started == true,
                 loaded = result.stages.enhanced.loaded == true }
         end
+        if type(result.stages.cold_cycle) == 'table' then
+            reload.stages.cold_cycle = { attempted = result.stages.cold_cycle.attempted == true,
+                focus_set = result.stages.cold_cycle.focus_set == true,
+                scene_started = result.stages.cold_cycle.scene_started == true,
+                scene_loaded = result.stages.cold_cycle.scene_loaded == true,
+                hold_completed = result.stages.cold_cycle.hold_completed == true }
+        end
+        if type(result.stages.return_stream) == 'table' then
+            reload.stages.return_stream = { attempted = result.stages.return_stream.attempted == true,
+                focus_set = result.stages.return_stream.focus_set == true,
+                scene_started = result.stages.return_stream.scene_started == true,
+                scene_loaded = result.stages.return_stream.scene_loaded == true,
+                collision_loaded = result.stages.return_stream.collision_loaded == true,
+                hold_completed = result.stages.return_stream.hold_completed == true }
+        end
     end
     enqueue({ type = 'reload_result', diagnostic_id = session.diagnostic_id,
         target_id = target, target_name = safeString(GetPlayerName(target) or 'unknown', 128),

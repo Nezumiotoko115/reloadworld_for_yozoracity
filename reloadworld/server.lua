@@ -14,7 +14,7 @@ Config.FeedbackExpirySeconds = clampInteger(Config.FeedbackExpirySeconds, 300, 1
 Config.WorlddiagPreDelayMs = clampInteger(Config.WorlddiagPreDelayMs, 750, 0, 5000)
 Config.FadeDurationMs = clampInteger(Config.FadeDurationMs, 350, 0, 5000)
 Config.NormalTimeoutMs = clampInteger(Config.NormalTimeoutMs, 5000, 500, 30000)
-Config.EnhancedTimeoutMs = clampInteger(Config.EnhancedTimeoutMs, 10000, 1000, 60000)
+Config.EnhancedTimeoutMs = clampInteger(Config.EnhancedTimeoutMs, 18000, 5000, 60000)
 if type(Config.CommandName) ~= 'string' or not Config.CommandName:match('^[A-Za-z0-9_-]+$') then Config.CommandName = 'reloadworld' end
 if type(Config.WorlddiagResourceName) ~= 'string' or not Config.WorlddiagResourceName:match('^[A-Za-z0-9_-]+$') then
     Config.WorlddiagResourceName = 'worlddiag'
@@ -67,6 +67,21 @@ local function sanitizeResult(data, expectedMode, expectedId)
             stages.enhanced = { attempted = data.stages.enhanced.attempted == true,
                 started = data.stages.enhanced.started == true, loaded = data.stages.enhanced.loaded == true }
         end
+        if type(data.stages.cold_cycle) == 'table' then
+            stages.cold_cycle = { attempted = data.stages.cold_cycle.attempted == true,
+                focus_set = data.stages.cold_cycle.focus_set == true,
+                scene_started = data.stages.cold_cycle.scene_started == true,
+                scene_loaded = data.stages.cold_cycle.scene_loaded == true,
+                hold_completed = data.stages.cold_cycle.hold_completed == true }
+        end
+        if type(data.stages.return_stream) == 'table' then
+            stages.return_stream = { attempted = data.stages.return_stream.attempted == true,
+                focus_set = data.stages.return_stream.focus_set == true,
+                scene_started = data.stages.return_stream.scene_started == true,
+                scene_loaded = data.stages.return_stream.scene_loaded == true,
+                collision_loaded = data.stages.return_stream.collision_loaded == true,
+                hold_completed = data.stages.return_stream.hold_completed == true }
+        end
     end
     return {
         reload_id = expectedId, mode = expectedMode, success = data.success == true,
@@ -110,6 +125,9 @@ RegisterCommand(Config.CommandName, function(source, args)
     local cooldown = mode == 'enhanced' and Config.EnhancedCooldownSeconds or Config.NormalCooldownSeconds
     cooldownUntil[src] = os.time() + cooldown
     active[src] = { reload_id = reloadId, mode = mode, started_at = os.time() }
+    if mode == 'enhanced' then
+        notify(src, '強化モードを開始します。遠方focus経由のため通常より時間がかかります。')
+    end
     local linked, diagnosticId = false, nil
     local ok, result = invokeWorlddiag('BeginReload', src, {
         reload_id = reloadId, mode = mode, server_started_utc = os.date('!%Y-%m-%dT%H:%M:%SZ') })

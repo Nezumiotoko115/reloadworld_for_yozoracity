@@ -8,12 +8,33 @@ local function clampInteger(value, default, minimum, maximum)
     if value < minimum or value > maximum then return default end
     return value
 end
+local function clampNumber(value, default, minimum, maximum)
+    value = tonumber(value)
+    if not value or value ~= value or value <= -math.huge or value >= math.huge then return default end
+    if value < minimum or value > maximum then return default end
+    return value
+end
 Config.NormalTimeoutMs = clampInteger(Config.NormalTimeoutMs, 5000, 500, 30000)
-Config.EnhancedTimeoutMs = clampInteger(Config.EnhancedTimeoutMs, 10000, 1000, 60000)
+Config.EnhancedTimeoutMs = clampInteger(Config.EnhancedTimeoutMs, 18000, 5000, 60000)
 Config.FadeDurationMs = clampInteger(Config.FadeDurationMs, 350, 0, 5000)
 Config.CollisionRequestIntervalMs = clampInteger(Config.CollisionRequestIntervalMs, 100, 0, 1000)
-Config.EnhancedSceneRadius = tonumber(Config.EnhancedSceneRadius) or 120.0
-if Config.EnhancedSceneRadius < 3.0 or Config.EnhancedSceneRadius > 1000.0 then Config.EnhancedSceneRadius = 120.0 end
+Config.EnhancedInitialRequestMs = clampInteger(Config.EnhancedInitialRequestMs, 1500, 250, 10000)
+Config.EnhancedRemoteHoldMs = clampInteger(Config.EnhancedRemoteHoldMs, 4000, 500, 20000)
+Config.EnhancedReturnHoldMs = clampInteger(Config.EnhancedReturnHoldMs, 5000, 500, 20000)
+Config.EnhancedSceneRadius = clampNumber(Config.EnhancedSceneRadius, 120.0, 3.0, 1000.0)
+Config.EnhancedRemoteFocusDistance = clampNumber(Config.EnhancedRemoteFocusDistance, 8000.0, 1000.0, 20000.0)
+Config.EnhancedRemoteFocusHeight = clampNumber(Config.EnhancedRemoteFocusHeight, 1000.0, 0.0, 5000.0)
+Config.EnhancedRemoteSceneRadius = clampNumber(Config.EnhancedRemoteSceneRadius, 50.0, 3.0, 1000.0)
+if type(Config.EnhancedColdCycleEnabled) ~= 'boolean' then Config.EnhancedColdCycleEnabled = true end
+
+local enhancedHoldBudget = math.max(1500, Config.EnhancedTimeoutMs - 2000)
+local configuredHoldTotal = Config.EnhancedInitialRequestMs + Config.EnhancedRemoteHoldMs + Config.EnhancedReturnHoldMs
+if configuredHoldTotal > enhancedHoldBudget then
+    local scale = enhancedHoldBudget / configuredHoldTotal
+    Config.EnhancedInitialRequestMs = math.max(250, math.floor(Config.EnhancedInitialRequestMs * scale))
+    Config.EnhancedRemoteHoldMs = math.max(500, math.floor(Config.EnhancedRemoteHoldMs * scale))
+    Config.EnhancedReturnHoldMs = math.max(500, math.floor(Config.EnhancedReturnHoldMs * scale))
+end
 
 local function debugLog(message)
     if Config.Debug then print(('[reloadworld] %s'):format(message)) end
@@ -42,6 +63,7 @@ local function cleanup()
     cleanupState = nil
     if not state then return end
     if state.sceneStarted then pcall(NewLoadSceneStop) end
+    if state.focusOverridden then pcall(ClearFocus) end
     if state.frozenByUs and state.ped and DoesEntityExist(state.ped) then
         pcall(FreezeEntityPosition, state.ped, false)
     end
@@ -52,6 +74,26 @@ local function waitForFadeOut(timeoutMs)
     local started = GetGameTimer()
     while not IsScreenFadedOut() and (GetGameTimer() - started) < timeoutMs do Wait(0) end
     return IsScreenFadedOut()
+end
+
+local function playerStateError(ped)
+    if not DoesEntityExist(ped) or IsEntityDead(ped) then return 'ped_lost' end
+    if isVehicleTransitionUnsafe(ped) then return 'vehicle_state_changed' end
+    return nil
+end
+
+local function stopLoadScene()
+    if cleanupState and cleanupState.sceneStarted then
+        NewLoadSceneStop()
+        cleanupState.sceneStarted = false
+    end
+end
+
+local function clearStreamingFocus()
+    if cleanupState and cleanupState.focusOverridden then
+        ClearFocus()
+        cleanupState.focusOverridden = false
+    end
 end
 
 local function runReload(reloadId, mode)
@@ -74,7 +116,8 @@ local function runReload(reloadId, mode)
         local coords = GetEntityCoords(ped)
         result.before = { x = coords.x, y = coords.y, z = coords.z,
             heading = GetEntityHeading(ped), speed = GetEntitySpeed(ped), falling = IsPedFalling(ped) }
-        cleanupState = { ped = ped, frozenByUs = false, fadeStarted = false, sceneStarted = false }
+        cleanupState = { ped = ped, frozenByUs = false, fadeStarted = false,
+            sceneStarted = false, focusOverridden = false }
         DoScreenFadeOut(Config.FadeDurationMs)
         cleanupState.fadeStarted = true
         waitForFadeOut(math.max(Config.FadeDurationMs * 3, 1000))
@@ -87,46 +130,126 @@ local function runReload(reloadId, mode)
 
         local timeoutMs = mode == 'enhanced' and Config.EnhancedTimeoutMs or Config.NormalTimeoutMs
         local deadline = GetGameTimer() + timeoutMs
-        local basicDeadline = mode == 'enhanced'
-            and math.min(deadline, GetGameTimer() + math.min(Config.NormalTimeoutMs, math.floor(timeoutMs / 2)))
-            or deadline
+        local basicDeadline = mode == 'enhanced' and math.min(deadline,
+            GetGameTimer() + Config.EnhancedInitialRequestMs) or deadline
         result.stages.basic = { started = true, loaded = false }
         while GetGameTimer() < basicDeadline do
-            if not DoesEntityExist(ped) or IsEntityDead(ped) then result.error_code = 'ped_lost'; return end
-            if isVehicleTransitionUnsafe(ped) then result.error_code = 'vehicle_state_changed'; return end
+            local stateError = playerStateError(ped)
+            if stateError then result.error_code = stateError; return end
             RequestCollisionAtCoord(coords.x, coords.y, coords.z)
             RequestAdditionalCollisionAtCoord(coords.x, coords.y, coords.z)
             if HasCollisionLoadedAroundEntity(ped) then
-                result.collision_loaded = true; result.stages.basic.loaded = true; break
+                result.collision_loaded = true
+                result.stages.basic.loaded = true
+                if mode == 'normal' then break end
             end
             Wait(Config.CollisionRequestIntervalMs)
         end
 
-        if mode == 'enhanced' and not result.collision_loaded and GetGameTimer() < deadline then
-            result.stages.enhanced = { attempted = true, started = false, loaded = false }
+        if mode == 'enhanced' and Config.EnhancedColdCycleEnabled and GetGameTimer() < deadline then
+            result.stages.cold_cycle = { attempted = true, focus_set = false,
+                scene_started = false, scene_loaded = false, hold_completed = false }
+            local headingRad = math.rad(GetEntityHeading(ped))
+            local remoteHeading = headingRad + math.pi
+            local remoteX = coords.x + (math.cos(remoteHeading) * Config.EnhancedRemoteFocusDistance)
+            local remoteY = coords.y + (math.sin(remoteHeading) * Config.EnhancedRemoteFocusDistance)
+            local remoteZ = coords.z + Config.EnhancedRemoteFocusHeight
+
+            SetFocusPosAndVel(remoteX, remoteY, remoteZ, 0.0, 0.0, 0.0)
+            cleanupState.focusOverridden = true
+            result.stages.cold_cycle.focus_set = true
+            local remoteSceneStarted = NewLoadSceneStart(remoteX, remoteY, remoteZ,
+                0.0, 0.0, 0.0, Config.EnhancedRemoteSceneRadius, 0) == true
+            result.stages.cold_cycle.scene_started = remoteSceneStarted
+            if remoteSceneStarted then cleanupState.sceneStarted = true end
+
+            local remoteHoldEnd = math.min(deadline - Config.EnhancedReturnHoldMs - 500,
+                GetGameTimer() + Config.EnhancedRemoteHoldMs)
+            while GetGameTimer() < remoteHoldEnd do
+                local stateError = playerStateError(ped)
+                if stateError then result.error_code = stateError; return end
+                if remoteSceneStarted and IsNewLoadSceneLoaded() then
+                    result.stages.cold_cycle.scene_loaded = true
+                end
+                Wait(Config.CollisionRequestIntervalMs)
+            end
+            result.stages.cold_cycle.hold_completed = GetGameTimer() >= remoteHoldEnd
+            stopLoadScene()
+
+            result.stages.return_stream = { attempted = true, focus_set = false,
+                scene_started = false, scene_loaded = false, collision_loaded = false,
+                hold_completed = false }
+            SetFocusPosAndVel(coords.x, coords.y, coords.z, 0.0, 0.0, 0.0)
+            result.stages.return_stream.focus_set = true
+            result.collision_loaded = false
+
+            local headingNow = math.rad(GetEntityHeading(ped))
+            local currentSceneStarted = NewLoadSceneStart(coords.x, coords.y, coords.z,
+                -math.sin(headingNow), math.cos(headingNow), 0.0,
+                Config.EnhancedSceneRadius, 0) == true
+            result.scene_started = currentSceneStarted
+            result.stages.return_stream.scene_started = currentSceneStarted
+            if currentSceneStarted then
+                cleanupState.sceneStarted = true
+            end
+
+            local returnHoldEnd = math.min(deadline, GetGameTimer() + Config.EnhancedReturnHoldMs)
+            while GetGameTimer() < deadline do
+                local stateError = playerStateError(ped)
+                if stateError then result.error_code = stateError; return end
+                RequestCollisionAtCoord(coords.x, coords.y, coords.z)
+                RequestAdditionalCollisionAtCoord(coords.x, coords.y, coords.z)
+                if currentSceneStarted and IsNewLoadSceneLoaded() then
+                    result.scene_loaded = true
+                    result.stages.return_stream.scene_loaded = true
+                end
+                if HasCollisionLoadedAroundEntity(ped) then
+                    result.collision_loaded = true
+                    result.stages.return_stream.collision_loaded = true
+                end
+                if GetGameTimer() >= returnHoldEnd and result.collision_loaded
+                    and (not currentSceneStarted or result.scene_loaded) then
+                    break
+                end
+                Wait(Config.CollisionRequestIntervalMs)
+            end
+            result.stages.return_stream.hold_completed = GetGameTimer() >= returnHoldEnd
+            stopLoadScene()
+            clearStreamingFocus()
+        elseif mode == 'enhanced' and GetGameTimer() < deadline then
+            result.stages.return_stream = { attempted = true, focus_set = false,
+                scene_started = false, scene_loaded = false, collision_loaded = false,
+                hold_completed = false }
             local headingRad = math.rad(GetEntityHeading(ped))
             local sceneOk = NewLoadSceneStart(coords.x, coords.y, coords.z,
                 -math.sin(headingRad), math.cos(headingRad), 0.0,
                 Config.EnhancedSceneRadius, 0)
             result.scene_started = sceneOk == true
-            result.stages.enhanced.started = result.scene_started
-            if result.scene_started then
-                cleanupState.sceneStarted = true
-                while GetGameTimer() < deadline do
-                    RequestCollisionAtCoord(coords.x, coords.y, coords.z)
-                    RequestAdditionalCollisionAtCoord(coords.x, coords.y, coords.z)
-                    if IsNewLoadSceneLoaded() then
-                        result.scene_loaded = true; result.stages.enhanced.loaded = true
-                    end
-                    if HasCollisionLoadedAroundEntity(ped) then result.collision_loaded = true end
-                    if result.scene_loaded and result.collision_loaded then break end
-                    Wait(Config.CollisionRequestIntervalMs)
+            result.stages.return_stream.scene_started = result.scene_started
+            if result.scene_started then cleanupState.sceneStarted = true end
+            local returnHoldEnd = math.min(deadline, GetGameTimer() + Config.EnhancedReturnHoldMs)
+            while GetGameTimer() < deadline do
+                local stateError = playerStateError(ped)
+                if stateError then result.error_code = stateError; return end
+                RequestCollisionAtCoord(coords.x, coords.y, coords.z)
+                RequestAdditionalCollisionAtCoord(coords.x, coords.y, coords.z)
+                if result.scene_started and IsNewLoadSceneLoaded() then
+                    result.scene_loaded = true
+                    result.stages.return_stream.scene_loaded = true
                 end
-                NewLoadSceneStop()
-                cleanupState.sceneStarted = false
+                if HasCollisionLoadedAroundEntity(ped) then
+                    result.collision_loaded = true
+                    result.stages.return_stream.collision_loaded = true
+                end
+                if GetGameTimer() >= returnHoldEnd and result.collision_loaded
+                    and (not result.scene_started or result.scene_loaded) then break end
+                Wait(Config.CollisionRequestIntervalMs)
             end
+            result.stages.return_stream.hold_completed = GetGameTimer() >= returnHoldEnd
+            stopLoadScene()
         end
         result.timed_out = not result.collision_loaded
+            or (result.scene_started and not result.scene_loaded)
         result.success = result.collision_loaded
     end, debug.traceback)
     if not ok then
