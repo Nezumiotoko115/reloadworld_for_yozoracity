@@ -6,21 +6,22 @@ Config.AcePermission = 'reloadworld.use'
 Config.EnhancedEnabled = true
 
 Config.NormalTimeoutMs = 5000
-Config.EnhancedTimeoutMs = 18000
+Config.EnhancedTimeoutMs = 30000
 Config.FadeDurationMs = 350
 Config.CollisionRequestIntervalMs = 100
-Config.EnhancedSceneRadius = 120.0
+Config.EnhancedSceneRadius = 180.0
 
--- Enhanced mode performs an experimental "cold cycle" without teleporting:
--- temporarily move streaming focus far away, hold it, then focus and reload the
--- player's current area. This cannot guarantee that vanilla map entities unload.
-Config.EnhancedColdCycleEnabled = true
+-- Enhanced mode uses GTA's player-switch streaming transition without moving the
+-- player ped, then forces a fresh current-area scene, object and collision load.
+-- This is intentionally slower and more disruptive than normal mode.
+Config.EnhancedPlayerSwitchEnabled = true
 Config.EnhancedInitialRequestMs = 1500
-Config.EnhancedRemoteFocusDistance = 8000.0
-Config.EnhancedRemoteFocusHeight = 1000.0
-Config.EnhancedRemoteSceneRadius = 50.0
-Config.EnhancedRemoteHoldMs = 4000
-Config.EnhancedReturnHoldMs = 5000
+Config.EnhancedSwitchOutHoldMs = 6000
+Config.EnhancedSwitchReturnTimeoutMs = 7000
+Config.EnhancedLocalHoldMs = 8000
+Config.EnhancedHdAreaEnabled = true
+Config.EnhancedHdRadius = 250.0
+Config.EnhancedLoadAllObjectsNow = true
 
 Config.NormalCooldownSeconds = 60
 Config.EnhancedCooldownSeconds = 120

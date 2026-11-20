@@ -8,7 +8,7 @@ FiveM向けStandalone Luaリソース2点です。`reloadworld` は現在位置�
 
 ## 1. 技術的な実現可能性
 
-完全なワールド、MLO、YMAPを任意に強制再読込する公式APIは確認できません。この実装が行うのは、現在位置でのコリジョン要求と、強化モード時の遠方focus経由・追加ロードシーン要求です。プレイヤー座標は変更しません。Nativeの完了値は「街が直った」ことを示しません。
+完全なワールド、MLO、YMAPを任意に初期化する公式APIは確認できません。この実装が行うのは、現在位置でのコリジョン要求と、強化モード時のプレイヤースイッチ、現在地HD領域、球形ロードシーン、オブジェクト即時ロードの組み合わせです。プレイヤー座標は変更しません。Nativeの完了値は「街が直った」ことを示しません。
 
 主要API（いずれもCfx.re公式ドキュメントまたは公式Nativeリポジトリで確認）:
 
@@ -17,9 +17,13 @@ FiveM向けStandalone Luaリソース2点です。`reloadworld` は現在位置�
 | `RequestCollisionAtCoord` | client | `(x, y, z) -> void` | 指定座標のコリジョンを要求。表示改善の保証なし |
 | `RequestAdditionalCollisionAtCoord` | client | `(x, y, z) -> void` | 追加のコリジョン要求。完了値なし |
 | `HasCollisionLoadedAroundEntity` | client | `(entity) -> bool` | エンティティ周辺のコリジョン状態。画面上の完全性は判定しない |
-| `NewLoadSceneStart` | client | `(pos, offset, radius, p7) -> bool` | 強化処理開始。`p7=0`。成功は改善を意味しない |
+| `SwitchToMultiFirstPart` / `SwitchToMultiSecondPart` | client | `(ped, flags, type) -> void` / `(ped) -> void` | GTAのプレイヤースイッチでstreaming遷移を作る。座標は変更しない |
+| `IsPlayerSwitchInProgress` / `StopPlayerSwitch` | client | `() -> bool` / `() -> void` | 既存スイッチの拒否、復帰確認、例外時停止 |
+| `LoadScene` / `LoadAllObjectsNow` | client | `(x, y, z) -> void` / `() -> void` | 現在地のsceneとロード対象objectを強制要求。実際の改善保証なし |
+| `SetHdArea` / `ClearHdArea` | client | `(x, y, z, radius) -> void` / `() -> void` | 強化処理中だけ現在地をHD対象にし、終了時に解除 |
+| `NewLoadSceneStartSphere` | client | `(x, y, z, radius, p4) -> bool` | 現在地の球形ロードシーンを開始。`p4=0` |
 | `IsNewLoadSceneLoaded` / `NewLoadSceneStop` | client | `() -> bool` / `() -> void` | 追加ロードシーンの確認／必須終了処理 |
-| `SetFocusPosAndVel` / `ClearFocus` | client | `(pos, offset) -> void` / `() -> void` | 強化モードで遠方と現在地のストリーミングfocusを切替。プレイヤーは移動しない |
+| `SetFocusPosAndVel` / `ClearFocus` | client | `(pos, offset) -> void` / `() -> void` | 強化モードで現在地へstreaming focusを固定。プレイヤーは移動しない |
 | `DoScreenFadeOut/In`, `IsScreenFadedOut` | client | fade ms / bool | 画面遷移。例外時も復帰を試行 |
 | `FreezeEntityPosition` | client | `(entity, bool) -> void` | ペドのみ一時固定。車両は操作しない |
 | `IsPedInAnyVehicle`, `IsPedGettingIntoAVehicle`, `IsPedJumpingOutOfVehicle` | client | `(ped) -> bool` | 車内、乗車中、飛び降り中を安全側で拒否 |
@@ -37,7 +41,13 @@ FiveM向けStandalone Luaリソース2点です。`reloadworld` は現在位置�
 - [REQUEST_COLLISION_AT_COORD](https://github.com/citizenfx/natives/blob/master/STREAMING/RequestCollisionAtCoord.md)
 - [REQUEST_ADDITIONAL_COLLISION_AT_COORD](https://github.com/citizenfx/natives/blob/master/STREAMING/RequestAdditionalCollisionAtCoord.md)
 - [HAS_COLLISION_LOADED_AROUND_ENTITY](https://github.com/citizenfx/natives/blob/master/STREAMING/HasCollisionLoadedAroundEntity.md)
-- [NEW_LOAD_SCENE_START](https://github.com/citizenfx/natives/blob/master/STREAMING/NewLoadSceneStart.md)
+- [SWITCH_TO_MULTI_FIRSTPART](https://github.com/citizenfx/natives/blob/master/STREAMING/SwitchToMultiFirstpart.md)
+- [SWITCH_TO_MULTI_SECONDPART](https://github.com/citizenfx/natives/blob/master/STREAMING/SwitchToMultiSecondpart.md)
+- [STOP_PLAYER_SWITCH](https://github.com/citizenfx/natives/blob/master/STREAMING/StopPlayerSwitch.md)
+- [LOAD_SCENE](https://github.com/citizenfx/natives/blob/master/STREAMING/LoadScene.md)
+- [LOAD_ALL_OBJECTS_NOW](https://github.com/citizenfx/natives/blob/master/STREAMING/LoadAllObjectsNow.md)
+- [SET_HD_AREA](https://github.com/citizenfx/natives/blob/master/STREAMING/SetHdArea.md)
+- [NEW_LOAD_SCENE_START_SPHERE](https://github.com/citizenfx/natives/blob/master/STREAMING/NewLoadSceneStartSphere.md)
 - [IS_NEW_LOAD_SCENE_LOADED](https://github.com/citizenfx/natives/blob/master/STREAMING/IsNewLoadSceneLoaded.md)
 - [NEW_LOAD_SCENE_STOP](https://github.com/citizenfx/natives/blob/master/STREAMING/NewLoadSceneStop.md)
 - [SET_FOCUS_POS_AND_VEL](https://github.com/citizenfx/natives/blob/master/STREAMING/SetFocusPosAndVel.md)
@@ -51,7 +61,7 @@ FiveM向けStandalone Luaリソース2点です。`reloadworld` は現在位置�
 
 ## 2. システム設計
 
-`reloadworld` のコマンド入口、クールダウン、二重実行、履歴、報告期限はサーバーが所有します。クライアントはサーバーが発行した `reload_id` に対する処理だけを実行し、結果を同じIDで返します。強化モードはコリジョンが既にloadedでも、遠方focus保持、現在地focus復帰、現在地ロード確認を必ず実施します。安全な後処理は1つのcleanup関数へ集約し、ロードシーン停止と `ClearFocus` も例外時に試行します。
+`reloadworld` のコマンド入口、クールダウン、二重実行、履歴、報告期限はサーバーが所有します。クライアントはサーバーが発行した `reload_id` に対する処理だけを実行し、結果を同じIDで返します。強化モードはコリジョンが既にloadedでも、プレイヤースイッチ、現在地focus／HD領域、scene／object／collisionの再要求を必ず実施します。安全な後処理は1つのcleanup関数へ集約し、プレイヤースイッチ停止、HD解除、ロードシーン停止、`ClearFocus`、固定解除、画面復帰を例外時にも試行します。
 
 `worlddiag` はサーバーが `diagnostic_id` と `request_id` を発行し、対象・期限・送信元を照合します。クライアント値は型、範囲、文字列長、JSONサイズを検証します。IP、license、Discord、Steam識別子は取得も保存もしません。
 
@@ -91,8 +101,10 @@ add_ace group.admin reloadworld.use allow
 静的なLua構文、manifest、イベント名、設定初期値、ZIP内容は開発環境で検査します。FiveM/GTA V実機でのNative挙動、OneSync構成差、実際の街の表示改善、負荷時のファイルI/Oはこの環境では未検証です。
 
 - `RequireKnownUnfrozenState=true` では、サーバーがペドと固定状態を確認できない構成でreloadを拒否します。既存リソースの固定解除を防ぐための安全側の仕様です。
-- 強化モードのfocus切替はアンロードを保証せず、script camera、spectate、cutscene等が独自focusを使用中の場合は競合し得ます。
-- バニラ建物がIPL/YMAP上で正式なロード対象なら、遠方focus後も現在地へ戻した時点で再表示されます。その場合はmap resource側の除去・置換設定が根本修正です。
+- 強化モードは既存のプレイヤースイッチ中には実行しません。script camera、spectate、spawn、cutscene、HD領域やfocusを独自制御するresourceとは競合し得ます。
+- `LoadAllObjectsNow` は意図的に強い要求で、一時的なフレーム停止や処理時間増加があり得ます。問題がある場合は設定で無効化できます。
+- 多地点・複数人で再発する場合、クライアント復旧は一時対処です。サーバー全体のstreaming負荷、巨大または不整合なYMAP/YTYP/YBN、テクスチャ予算、resource競合、クライアントメモリ不足を修正しません。
+- バニラ建物がIPL/YMAP上で正式なロード対象なら再表示されます。その場合はmap resource側の除去・置換設定が根本修正です。
 - ペド固定確認からクライアント固定までに他リソースが状態を変える競合は、完全には排除できません。
 - FPSは短時間の推定値です。Pingとコリジョン状態を含め、単独で原因や改善を証明しません。
 - クライアント送信値は改ざん可能です。サーバー観測値と区別して保存します。

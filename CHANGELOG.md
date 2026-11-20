@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.0 - 2026-11-21
+
+- 遠方focusだけでは改善しない多地点の街溶け対策として、強化モードを全面更新
+- プレイヤー座標を変えず `SwitchToMultiFirstPart` / `SwitchToMultiSecondPart` でstreaming遷移を実行
+- 現在地へ `SetHdArea`、`SetFocusPosAndVel`、`LoadScene`、`LoadAllObjectsNow`、`NewLoadSceneStartSphere` を段階適用
+- 強化最大待機を30秒、スイッチアウト保持6秒、復帰待機最大7秒、現在地保持8秒へ変更
+- 既存プレイヤースイッチ中の実行を拒否し、例外時は `StopPlayerSwitch`、`ClearHdArea`、`NewLoadSceneStop`、`ClearFocus` を試行
+- `player_switch` と `local_stream` の段階結果をworlddiagへ記録
+- 多地点・複数人で再発する場合のサーバー／map asset側調査手順を追加
+
 ## 1.1.0 - 2026-11-21
 
 - `/reloadworld enhanced` を、コリジョン状態が既にloadedでも必ず実行する方式へ変更

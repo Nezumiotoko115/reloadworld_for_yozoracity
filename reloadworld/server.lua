@@ -14,7 +14,7 @@ Config.FeedbackExpirySeconds = clampInteger(Config.FeedbackExpirySeconds, 300, 1
 Config.WorlddiagPreDelayMs = clampInteger(Config.WorlddiagPreDelayMs, 750, 0, 5000)
 Config.FadeDurationMs = clampInteger(Config.FadeDurationMs, 350, 0, 5000)
 Config.NormalTimeoutMs = clampInteger(Config.NormalTimeoutMs, 5000, 500, 30000)
-Config.EnhancedTimeoutMs = clampInteger(Config.EnhancedTimeoutMs, 18000, 5000, 60000)
+Config.EnhancedTimeoutMs = clampInteger(Config.EnhancedTimeoutMs, 30000, 10000, 90000)
 if type(Config.CommandName) ~= 'string' or not Config.CommandName:match('^[A-Za-z0-9_-]+$') then Config.CommandName = 'reloadworld' end
 if type(Config.WorlddiagResourceName) ~= 'string' or not Config.WorlddiagResourceName:match('^[A-Za-z0-9_-]+$') then
     Config.WorlddiagResourceName = 'worlddiag'
@@ -67,20 +67,24 @@ local function sanitizeResult(data, expectedMode, expectedId)
             stages.enhanced = { attempted = data.stages.enhanced.attempted == true,
                 started = data.stages.enhanced.started == true, loaded = data.stages.enhanced.loaded == true }
         end
-        if type(data.stages.cold_cycle) == 'table' then
-            stages.cold_cycle = { attempted = data.stages.cold_cycle.attempted == true,
-                focus_set = data.stages.cold_cycle.focus_set == true,
-                scene_started = data.stages.cold_cycle.scene_started == true,
-                scene_loaded = data.stages.cold_cycle.scene_loaded == true,
-                hold_completed = data.stages.cold_cycle.hold_completed == true }
+        if type(data.stages.player_switch) == 'table' then
+            stages.player_switch = { attempted = data.stages.player_switch.attempted == true,
+                started = data.stages.player_switch.started == true,
+                out_hold_completed = data.stages.player_switch.out_hold_completed == true,
+                return_started = data.stages.player_switch.return_started == true,
+                completed = data.stages.player_switch.completed == true,
+                forced_stop = data.stages.player_switch.forced_stop == true }
         end
-        if type(data.stages.return_stream) == 'table' then
-            stages.return_stream = { attempted = data.stages.return_stream.attempted == true,
-                focus_set = data.stages.return_stream.focus_set == true,
-                scene_started = data.stages.return_stream.scene_started == true,
-                scene_loaded = data.stages.return_stream.scene_loaded == true,
-                collision_loaded = data.stages.return_stream.collision_loaded == true,
-                hold_completed = data.stages.return_stream.hold_completed == true }
+        if type(data.stages.local_stream) == 'table' then
+            stages.local_stream = { attempted = data.stages.local_stream.attempted == true,
+                focus_set = data.stages.local_stream.focus_set == true,
+                hd_area_set = data.stages.local_stream.hd_area_set == true,
+                load_scene_called = data.stages.local_stream.load_scene_called == true,
+                objects_forced = data.stages.local_stream.objects_forced == true,
+                scene_started = data.stages.local_stream.scene_started == true,
+                scene_loaded = data.stages.local_stream.scene_loaded == true,
+                collision_loaded = data.stages.local_stream.collision_loaded == true,
+                hold_completed = data.stages.local_stream.hold_completed == true }
         end
     end
     return {
@@ -126,7 +130,7 @@ RegisterCommand(Config.CommandName, function(source, args)
     cooldownUntil[src] = os.time() + cooldown
     active[src] = { reload_id = reloadId, mode = mode, started_at = os.time() }
     if mode == 'enhanced' then
-        notify(src, '強化モードを開始します。遠方focus経由のため通常より時間がかかります。')
+        notify(src, '強化モードを開始します。プレイヤースイッチと強制ストリーミングのため約20秒以上かかります。')
     end
     local linked, diagnosticId = false, nil
     local ok, result = invokeWorlddiag('BeginReload', src, {
@@ -174,6 +178,8 @@ RegisterNetEvent('reloadworld:server:complete', function(reloadId, data)
         notify(src, '車両から降り、乗降動作が終わってから実行してください。')
     elseif result.error_code == 'screen_transition_active' then
         notify(src, '画面切り替え中です。画面が戻ってから再実行してください。')
+    elseif result.error_code == 'player_switch_active' then
+        notify(src, '既にプレイヤースイッチ中です。スポーン／観戦／カットシーン終了後に再実行してください。')
     elseif result.error_code then
         notify(src, ('%s：エラー（%s、%.1f秒）'):format(label, result.error_code, seconds))
     elseif result.timed_out then
