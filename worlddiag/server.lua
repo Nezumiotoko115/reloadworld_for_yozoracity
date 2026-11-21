@@ -262,7 +262,7 @@ exports('BeginReload', function(target, metadata)
     target = tonumber(target)
     if not target or not GetPlayerName(target) or type(metadata) ~= 'table' then return nil end
     local reloadId, mode = safeString(metadata.reload_id, 96), safeString(metadata.mode, 16)
-    if not reloadId or mode ~= 'normal' or sessions[reloadId] then return nil end
+    if not reloadId or (mode ~= 'normal' and mode ~= 'enhanced') or sessions[reloadId] then return nil end
     local diagnosticId = makeId('rw', target)
     sessions[reloadId] = { target = target, diagnostic_id = diagnosticId, mode = mode,
         created = os.time(), started_utc = safeString(metadata.server_started_utc, 32) or utcNow(),
@@ -294,6 +294,11 @@ exports('EndReload', function(target, result)
         if type(result.stages.basic) == 'table' then
             reload.stages.basic = { started = result.stages.basic.started == true,
                 loaded = result.stages.basic.loaded == true }
+        end
+        if type(result.stages.enhanced) == 'table' then
+            reload.stages.enhanced = { attempted = result.stages.enhanced.attempted == true,
+                started = result.stages.enhanced.started == true,
+                loaded = result.stages.enhanced.loaded == true }
         end
         if type(result.stages.player_switch) == 'table' then
             reload.stages.player_switch = { attempted = result.stages.player_switch.attempted == true,

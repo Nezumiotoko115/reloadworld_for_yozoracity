@@ -8,11 +8,13 @@ local function clampInteger(value, default, minimum, maximum)
     if value < minimum or value > maximum then return default end
     return value
 end
-Config.CooldownSeconds = clampInteger(Config.CooldownSeconds, 20, 0, 86400)
+Config.NormalCooldownSeconds = clampInteger(Config.NormalCooldownSeconds, 10, 0, 86400)
+Config.EnhancedCooldownSeconds = clampInteger(Config.EnhancedCooldownSeconds, 10, 0, 86400)
 Config.FeedbackExpirySeconds = clampInteger(Config.FeedbackExpirySeconds, 300, 10, 86400)
 Config.WorlddiagPreDelayMs = clampInteger(Config.WorlddiagPreDelayMs, 750, 0, 5000)
 Config.FadeDurationMs = clampInteger(Config.FadeDurationMs, 350, 0, 5000)
-Config.TimeoutMs = clampInteger(Config.TimeoutMs, 30000, 10000, 90000)
+Config.NormalTimeoutMs = clampInteger(Config.NormalTimeoutMs, 5000, 500, 30000)
+Config.EnhancedTimeoutMs = clampInteger(Config.EnhancedTimeoutMs, 30000, 10000, 90000)
 if type(Config.CommandName) ~= 'string' or not Config.CommandName:match('^[A-Za-z0-9_-]+$') then Config.CommandName = 'reloadworld' end
 if type(Config.WorlddiagResourceName) ~= 'string' or not Config.WorlddiagResourceName:match('^[A-Za-z0-9_-]+$') then
     Config.WorlddiagResourceName = 'worlddiag'
@@ -61,6 +63,10 @@ local function sanitizeResult(data, expectedMode, expectedId)
         if type(data.stages.basic) == 'table' then
             stages.basic = { started = data.stages.basic.started == true, loaded = data.stages.basic.loaded == true }
         end
+        if type(data.stages.enhanced) == 'table' then
+            stages.enhanced = { attempted = data.stages.enhanced.attempted == true,
+                started = data.stages.enhanced.started == true, loaded = data.stages.enhanced.loaded == true }
+        end
         if type(data.stages.player_switch) == 'table' then
             stages.player_switch = { attempted = data.stages.player_switch.attempted == true,
                 started = data.stages.player_switch.started == true,
@@ -108,7 +114,10 @@ RegisterCommand(Config.CommandName, function(source, args)
     if arg == 'fixed' or arg == 'notfixed' then handleFeedback(src, arg); return end
     if arg ~= '' then notify(src, ('使用法: /%s [fixed|notfixed]'):format(Config.CommandName)); return end
     if not hasPermission(src) then notify(src, '実行権限がありません。'); return end
-    local mode = 'normal'
+    -- Keep the previously working enhanced client path unchanged; only the
+    -- public command entry point is now the plain /reloadworld command.
+    local mode = 'enhanced'
+    if mode == 'enhanced' and not Config.EnhancedEnabled then notify(src, '強化モードは無効です。'); return end
     if active[src] then notify(src, 'すでに処理中です。'); return end
     local remaining = (cooldownUntil[src] or 0) - os.time()
     if remaining > 0 then notify(src, ('クールダウン中です。残り%d秒。'):format(remaining)); return end
@@ -119,9 +128,10 @@ RegisterCommand(Config.CommandName, function(source, args)
     end
 
     local reloadId = makeId('reload', src)
-    cooldownUntil[src] = os.time() + Config.CooldownSeconds
+    local cooldown = mode == 'enhanced' and Config.EnhancedCooldownSeconds or Config.NormalCooldownSeconds
+    cooldownUntil[src] = os.time() + cooldown
     active[src] = { reload_id = reloadId, mode = mode, started_at = os.time() }
-    notify(src, 'ワールド再読み込みを開始します。プレイヤースイッチと強制ストリーミングのため約20秒以上かかります。')
+    notify(src, 'ワールド再読み込みを開始します。完了まで約20秒以上かかります。')
     local linked, diagnosticId = false, nil
     local ok, result = invokeWorlddiag('BeginReload', src, {
         reload_id = reloadId, mode = mode, server_started_utc = os.date('!%Y-%m-%dT%H:%M:%SZ') })
@@ -135,8 +145,8 @@ RegisterCommand(Config.CommandName, function(source, args)
         end
     end)
     CreateThread(function()
-        local maximum = Config.TimeoutMs + Config.WorlddiagPreDelayMs
-            + math.max(Config.FadeDurationMs * 4, 2000) + 2000
+        local maximum = (mode == 'enhanced' and Config.EnhancedTimeoutMs or Config.NormalTimeoutMs)
+            + Config.WorlddiagPreDelayMs + math.max(Config.FadeDurationMs * 4, 2000) + 2000
         Wait(maximum)
         local current = active[src]
         if current and current.reload_id == reloadId then
