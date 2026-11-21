@@ -8,7 +8,7 @@ local function clampInteger(value, default, minimum, maximum)
     if value < minimum or value > maximum then return default end
     return value
 end
-Config.CooldownSeconds = clampInteger(Config.CooldownSeconds, 120, 0, 86400)
+Config.CooldownSeconds = clampInteger(Config.CooldownSeconds, 20, 0, 86400)
 Config.FeedbackExpirySeconds = clampInteger(Config.FeedbackExpirySeconds, 300, 10, 86400)
 Config.WorlddiagPreDelayMs = clampInteger(Config.WorlddiagPreDelayMs, 750, 0, 5000)
 Config.FadeDurationMs = clampInteger(Config.FadeDurationMs, 350, 0, 5000)

@@ -21,7 +21,7 @@ Config.HdAreaEnabled = true
 Config.HdRadius = 250.0
 Config.LoadAllObjectsNow = true
 
-Config.CooldownSeconds = 120
+Config.CooldownSeconds = 20
 Config.FeedbackExpirySeconds = 300
 
 -- Safety: refuse unless the server can confirm that the ped was not already frozen.

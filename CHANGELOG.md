@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.1 - 2026-11-21
+
+- 標準 `/reloadworld` の既定クールダウンを120秒から20秒へ変更
+
 ## 1.3.0 - 2026-11-21
 
 - v1.2.0の `/reloadworld enhanced` 処理を標準 `/reloadworld` へ昇格
