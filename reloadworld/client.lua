@@ -14,29 +14,28 @@ local function clampNumber(value, default, minimum, maximum)
     if value < minimum or value > maximum then return default end
     return value
 end
-Config.NormalTimeoutMs = clampInteger(Config.NormalTimeoutMs, 5000, 500, 30000)
-Config.EnhancedTimeoutMs = clampInteger(Config.EnhancedTimeoutMs, 30000, 10000, 90000)
+Config.TimeoutMs = clampInteger(Config.TimeoutMs, 30000, 10000, 90000)
 Config.FadeDurationMs = clampInteger(Config.FadeDurationMs, 350, 0, 5000)
 Config.CollisionRequestIntervalMs = clampInteger(Config.CollisionRequestIntervalMs, 100, 0, 1000)
-Config.EnhancedInitialRequestMs = clampInteger(Config.EnhancedInitialRequestMs, 1500, 250, 10000)
-Config.EnhancedSwitchOutHoldMs = clampInteger(Config.EnhancedSwitchOutHoldMs, 6000, 1000, 20000)
-Config.EnhancedSwitchReturnTimeoutMs = clampInteger(Config.EnhancedSwitchReturnTimeoutMs, 7000, 1000, 20000)
-Config.EnhancedLocalHoldMs = clampInteger(Config.EnhancedLocalHoldMs, 8000, 1000, 30000)
-Config.EnhancedSceneRadius = clampNumber(Config.EnhancedSceneRadius, 180.0, 10.0, 1000.0)
-Config.EnhancedHdRadius = clampNumber(Config.EnhancedHdRadius, 250.0, 10.0, 1000.0)
-if type(Config.EnhancedPlayerSwitchEnabled) ~= 'boolean' then Config.EnhancedPlayerSwitchEnabled = true end
-if type(Config.EnhancedHdAreaEnabled) ~= 'boolean' then Config.EnhancedHdAreaEnabled = true end
-if type(Config.EnhancedLoadAllObjectsNow) ~= 'boolean' then Config.EnhancedLoadAllObjectsNow = true end
+Config.InitialRequestMs = clampInteger(Config.InitialRequestMs, 1500, 250, 10000)
+Config.SwitchOutHoldMs = clampInteger(Config.SwitchOutHoldMs, 6000, 1000, 20000)
+Config.SwitchReturnTimeoutMs = clampInteger(Config.SwitchReturnTimeoutMs, 7000, 1000, 20000)
+Config.LocalHoldMs = clampInteger(Config.LocalHoldMs, 8000, 1000, 30000)
+Config.SceneRadius = clampNumber(Config.SceneRadius, 180.0, 10.0, 1000.0)
+Config.HdRadius = clampNumber(Config.HdRadius, 250.0, 10.0, 1000.0)
+if type(Config.PlayerSwitchEnabled) ~= 'boolean' then Config.PlayerSwitchEnabled = true end
+if type(Config.HdAreaEnabled) ~= 'boolean' then Config.HdAreaEnabled = true end
+if type(Config.LoadAllObjectsNow) ~= 'boolean' then Config.LoadAllObjectsNow = true end
 
-local enhancedHoldBudget = math.max(1500, Config.EnhancedTimeoutMs - 2000)
-local configuredHoldTotal = Config.EnhancedInitialRequestMs + Config.EnhancedSwitchOutHoldMs
-    + Config.EnhancedSwitchReturnTimeoutMs + Config.EnhancedLocalHoldMs
-if configuredHoldTotal > enhancedHoldBudget then
-    local scale = enhancedHoldBudget / configuredHoldTotal
-    Config.EnhancedInitialRequestMs = math.max(250, math.floor(Config.EnhancedInitialRequestMs * scale))
-    Config.EnhancedSwitchOutHoldMs = math.max(1000, math.floor(Config.EnhancedSwitchOutHoldMs * scale))
-    Config.EnhancedSwitchReturnTimeoutMs = math.max(1000, math.floor(Config.EnhancedSwitchReturnTimeoutMs * scale))
-    Config.EnhancedLocalHoldMs = math.max(1000, math.floor(Config.EnhancedLocalHoldMs * scale))
+local holdBudget = math.max(1500, Config.TimeoutMs - 2000)
+local configuredHoldTotal = Config.InitialRequestMs + Config.SwitchOutHoldMs
+    + Config.SwitchReturnTimeoutMs + Config.LocalHoldMs
+if configuredHoldTotal > holdBudget then
+    local scale = holdBudget / configuredHoldTotal
+    Config.InitialRequestMs = math.max(250, math.floor(Config.InitialRequestMs * scale))
+    Config.SwitchOutHoldMs = math.max(1000, math.floor(Config.SwitchOutHoldMs * scale))
+    Config.SwitchReturnTimeoutMs = math.max(1000, math.floor(Config.SwitchReturnTimeoutMs * scale))
+    Config.LocalHoldMs = math.max(1000, math.floor(Config.LocalHoldMs * scale))
 end
 
 local function debugLog(message)
@@ -101,7 +100,7 @@ local function clearStreamingFocus()
     end
 end
 
-local function clearEnhancedHdArea()
+local function clearRecoveryHdArea()
     if cleanupState and cleanupState.hdAreaSet then
         ClearHdArea()
         cleanupState.hdAreaSet = false
@@ -144,10 +143,8 @@ local function runReload(reloadId, mode)
         FreezeEntityPosition(ped, true)
         cleanupState.frozenByUs = true
 
-        local timeoutMs = mode == 'enhanced' and Config.EnhancedTimeoutMs or Config.NormalTimeoutMs
-        local deadline = GetGameTimer() + timeoutMs
-        local basicDeadline = mode == 'enhanced' and math.min(deadline,
-            GetGameTimer() + Config.EnhancedInitialRequestMs) or deadline
+        local deadline = GetGameTimer() + Config.TimeoutMs
+        local basicDeadline = math.min(deadline, GetGameTimer() + Config.InitialRequestMs)
         result.stages.basic = { started = true, loaded = false }
         while GetGameTimer() < basicDeadline do
             local stateError = playerStateError(ped)
@@ -157,17 +154,16 @@ local function runReload(reloadId, mode)
             if HasCollisionLoadedAroundEntity(ped) then
                 result.collision_loaded = true
                 result.stages.basic.loaded = true
-                if mode == 'normal' then break end
             end
             Wait(Config.CollisionRequestIntervalMs)
         end
 
-        if mode == 'enhanced' and GetGameTimer() < deadline then
-            result.stages.player_switch = { attempted = Config.EnhancedPlayerSwitchEnabled,
+        if GetGameTimer() < deadline then
+            result.stages.player_switch = { attempted = Config.PlayerSwitchEnabled,
                 started = false, out_hold_completed = false, return_started = false,
                 completed = false, forced_stop = false }
 
-            if Config.EnhancedPlayerSwitchEnabled then
+            if Config.PlayerSwitchEnabled then
                 SwitchToMultiFirstPart(ped, 0, 1)
                 cleanupState.playerSwitchStarted = true
 
@@ -180,8 +176,8 @@ local function runReload(reloadId, mode)
                 result.stages.player_switch.started = IsPlayerSwitchInProgress()
 
                 if result.stages.player_switch.started then
-                    local outHoldEnd = math.min(GetGameTimer() + Config.EnhancedSwitchOutHoldMs,
-                        deadline - Config.EnhancedSwitchReturnTimeoutMs - Config.EnhancedLocalHoldMs)
+                    local outHoldEnd = math.min(GetGameTimer() + Config.SwitchOutHoldMs,
+                        deadline - Config.SwitchReturnTimeoutMs - Config.LocalHoldMs)
                     while IsPlayerSwitchInProgress() and GetGameTimer() < outHoldEnd do
                         local stateError = playerStateError(ped)
                         if stateError then result.error_code = stateError; return end
@@ -192,8 +188,8 @@ local function runReload(reloadId, mode)
                     SwitchToMultiSecondPart(ped)
                     result.stages.player_switch.return_started = true
                     local switchReturnDeadline = math.min(
-                        GetGameTimer() + Config.EnhancedSwitchReturnTimeoutMs,
-                        deadline - Config.EnhancedLocalHoldMs)
+                        GetGameTimer() + Config.SwitchReturnTimeoutMs,
+                        deadline - Config.LocalHoldMs)
                     while IsPlayerSwitchInProgress() and GetGameTimer() < switchReturnDeadline do
                         local stateError = playerStateError(ped)
                         if stateError then result.error_code = stateError; return end
@@ -221,25 +217,25 @@ local function runReload(reloadId, mode)
             cleanupState.focusOverridden = true
             result.stages.local_stream.focus_set = true
 
-            if Config.EnhancedHdAreaEnabled then
-                SetHdArea(coords.x, coords.y, coords.z, Config.EnhancedHdRadius)
+            if Config.HdAreaEnabled then
+                SetHdArea(coords.x, coords.y, coords.z, Config.HdRadius)
                 cleanupState.hdAreaSet = true
                 result.stages.local_stream.hd_area_set = true
             end
 
             local loadSceneOk = pcall(LoadScene, coords.x, coords.y, coords.z)
             result.stages.local_stream.load_scene_called = loadSceneOk
-            if Config.EnhancedLoadAllObjectsNow then
+            if Config.LoadAllObjectsNow then
                 result.stages.local_stream.objects_forced = pcall(LoadAllObjectsNow)
             end
 
             local sceneOk = NewLoadSceneStartSphere(coords.x, coords.y, coords.z,
-                Config.EnhancedSceneRadius, 0)
+                Config.SceneRadius, 0)
             result.scene_started = sceneOk == true
             result.stages.local_stream.scene_started = result.scene_started
             if result.scene_started then cleanupState.sceneStarted = true end
 
-            local localHoldEnd = math.min(deadline, GetGameTimer() + Config.EnhancedLocalHoldMs)
+            local localHoldEnd = math.min(deadline, GetGameTimer() + Config.LocalHoldMs)
             while GetGameTimer() < deadline do
                 local stateError = playerStateError(ped)
                 if stateError then result.error_code = stateError; return end
@@ -259,7 +255,7 @@ local function runReload(reloadId, mode)
             end
             result.stages.local_stream.hold_completed = GetGameTimer() >= localHoldEnd
             stopLoadScene()
-            clearEnhancedHdArea()
+            clearRecoveryHdArea()
             clearStreamingFocus()
         end
         result.timed_out = not result.collision_loaded
@@ -284,7 +280,7 @@ RegisterNetEvent('reloadworld:client:start', function(reloadId, mode)
             duration_ms = 0, error_code = 'client_busy' })
         return
     end
-    if type(reloadId) ~= 'string' or #reloadId > 96 or (mode ~= 'normal' and mode ~= 'enhanced') then return end
+    if type(reloadId) ~= 'string' or #reloadId > 96 or mode ~= 'normal' then return end
     busy = true
     CreateThread(function() runReload(reloadId, mode) end)
 end)
