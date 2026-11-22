@@ -8,7 +8,7 @@ FiveM向けStandalone Luaリソース2点です。`reloadworld` は現在位置�
 
 ## 1. 技術的な実現可能性
 
-完全なワールド、MLO、YMAPを任意に初期化する公式APIは確認できません。この実装が行うのは、標準 `/reloadworld` でのプレイヤースイッチ、現在地HD領域、球形ロードシーン、オブジェクト即時ロード、コリジョン要求の組み合わせです。プレイヤー座標は変更しません。Nativeの完了値は「街が直った」ことを示しません。
+完全なワールド、MLO、YMAPを任意に初期化する公式APIは確認できません。この実装が行うのは、現在位置でのコリジョン要求と、強化モード時のプレイヤースイッチ、現在地HD領域、球形ロードシーン、オブジェクト即時ロードの組み合わせです。プレイヤー座標は変更しません。Nativeの完了値は「街が直った」ことを示しません。
 
 主要API（いずれもCfx.re公式ドキュメントまたは公式Nativeリポジトリで確認）:
 
@@ -23,7 +23,7 @@ FiveM向けStandalone Luaリソース2点です。`reloadworld` は現在位置�
 | `SetHdArea` / `ClearHdArea` | client | `(x, y, z, radius) -> void` / `() -> void` | 強化処理中だけ現在地をHD対象にし、終了時に解除 |
 | `NewLoadSceneStartSphere` | client | `(x, y, z, radius, p4) -> bool` | 現在地の球形ロードシーンを開始。`p4=0` |
 | `IsNewLoadSceneLoaded` / `NewLoadSceneStop` | client | `() -> bool` / `() -> void` | 追加ロードシーンの確認／必須終了処理 |
-| `SetFocusPosAndVel` / `ClearFocus` | client | `(pos, offset) -> void` / `() -> void` | 現在地へstreaming focusを固定。プレイヤーは移動しない |
+| `SetFocusPosAndVel` / `ClearFocus` | client | `(pos, offset) -> void` / `() -> void` | 強化モードで現在地へstreaming focusを固定。プレイヤーは移動しない |
 | `DoScreenFadeOut/In`, `IsScreenFadedOut` | client | fade ms / bool | 画面遷移。例外時も復帰を試行 |
 | `FreezeEntityPosition` | client | `(entity, bool) -> void` | ペドのみ一時固定。車両は操作しない |
 | `IsPedInAnyVehicle`, `IsPedGettingIntoAVehicle`, `IsPedJumpingOutOfVehicle` | client | `(ped) -> bool` | 車内、乗車中、飛び降り中を安全側で拒否 |
@@ -61,7 +61,7 @@ FiveM向けStandalone Luaリソース2点です。`reloadworld` は現在位置�
 
 ## 2. システム設計
 
-`reloadworld` のコマンド入口、クールダウン、二重実行、履歴、報告期限はサーバーが所有します。クライアントはサーバーが発行した `reload_id` に対する処理だけを実行し、結果を同じIDで返します。標準処理はコリジョンが既にloadedでも、プレイヤースイッチ、現在地focus／HD領域、scene／object／collisionの再要求を必ず実施します。安全な後処理は1つのcleanup関数へ集約し、プレイヤースイッチ停止、HD解除、ロードシーン停止、`ClearFocus`、固定解除、画面復帰を例外時にも試行します。
+`reloadworld` のコマンド入口、クールダウン、二重実行、履歴、報告期限はサーバーが所有します。クライアントはサーバーが発行した `reload_id` に対する処理だけを実行し、結果を同じIDで返します。強化モードはコリジョンが既にloadedでも、プレイヤースイッチ、現在地focus／HD領域、scene／object／collisionの再要求を必ず実施します。安全な後処理は1つのcleanup関数へ集約し、プレイヤースイッチ停止、HD解除、ロードシーン停止、`ClearFocus`、固定解除、画面復帰を例外時にも試行します。
 
 `worlddiag` はサーバーが `diagnostic_id` と `request_id` を発行し、対象・期限・送信元を照合します。クライアント値は型、範囲、文字列長、JSONサイズを検証します。IP、license、Discord、Steam識別子は取得も保存もしません。
 
@@ -88,7 +88,7 @@ add_ace group.admin reloadworld.use allow
 
 1. 各リソースを単独で `ensure` し、コンソールエラーがないことを確認する。
 2. 権限なし／ありのユーザーで `/worldlog` と `/worldlog [serverId]` を試す。
-3. 徒歩で `/reloadworld` を実行し、プレイヤースイッチ、フェード、固定解除、通知、クールダウンを確認する。`/reloadworld enhanced` が使用法エラーになることも確認する。
+3. 徒歩で `/reloadworld`、`/reloadworld enhanced` を実行し、フェード、固定解除、通知、クールダウンを確認する。
 4. 車両内、乗車途中、死亡時、既に固定された状態で拒否または安全終了することを確認する。
 5. 処理中に `stop reloadworld` を行い、可能な範囲で画面と固定が復元されることを確認する。
 6. `worlddiag` を停止した状態でreloadとfeedbackが機能すること、`reloadworld` 停止時に手動診断が機能することを確認する。
@@ -101,7 +101,7 @@ add_ace group.admin reloadworld.use allow
 静的なLua構文、manifest、イベント名、設定初期値、ZIP内容は開発環境で検査します。FiveM/GTA V実機でのNative挙動、OneSync構成差、実際の街の表示改善、負荷時のファイルI/Oはこの環境では未検証です。
 
 - `RequireKnownUnfrozenState=true` では、サーバーがペドと固定状態を確認できない構成でreloadを拒否します。既存リソースの固定解除を防ぐための安全側の仕様です。
-- 標準 `/reloadworld` は既存のプレイヤースイッチ中には実行しません。script camera、spectate、spawn、cutscene、HD領域やfocusを独自制御するresourceとは競合し得ます。
+- 強化モードは既存のプレイヤースイッチ中には実行しません。script camera、spectate、spawn、cutscene、HD領域やfocusを独自制御するresourceとは競合し得ます。
 - `LoadAllObjectsNow` は意図的に強い要求で、一時的なフレーム停止や処理時間増加があり得ます。問題がある場合は設定で無効化できます。
 - 多地点・複数人で再発する場合、クライアント復旧は一時対処です。サーバー全体のstreaming負荷、巨大または不整合なYMAP/YTYP/YBN、テクスチャ予算、resource競合、クライアントメモリ不足を修正しません。
 - バニラ建物がIPL/YMAP上で正式なロード対象なら再表示されます。その場合はmap resource側の除去・置換設定が根本修正です。

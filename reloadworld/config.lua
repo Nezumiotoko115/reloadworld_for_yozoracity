@@ -23,8 +23,8 @@ Config.EnhancedHdAreaEnabled = true
 Config.EnhancedHdRadius = 250.0
 Config.EnhancedLoadAllObjectsNow = true
 
-Config.NormalCooldownSeconds = 10
-Config.EnhancedCooldownSeconds = 10
+Config.NormalCooldownSeconds = 60
+Config.EnhancedCooldownSeconds = 120
 Config.FeedbackExpirySeconds = 300
 
 -- Safety: refuse unless the server can confirm that the ped was not already frozen.

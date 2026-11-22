@@ -8,8 +8,8 @@ local function clampInteger(value, default, minimum, maximum)
     if value < minimum or value > maximum then return default end
     return value
 end
-Config.NormalCooldownSeconds = clampInteger(Config.NormalCooldownSeconds, 10, 0, 86400)
-Config.EnhancedCooldownSeconds = clampInteger(Config.EnhancedCooldownSeconds, 10, 0, 86400)
+Config.NormalCooldownSeconds = clampInteger(Config.NormalCooldownSeconds, 60, 0, 86400)
+Config.EnhancedCooldownSeconds = clampInteger(Config.EnhancedCooldownSeconds, 120, 0, 86400)
 Config.FeedbackExpirySeconds = clampInteger(Config.FeedbackExpirySeconds, 300, 10, 86400)
 Config.WorlddiagPreDelayMs = clampInteger(Config.WorlddiagPreDelayMs, 750, 0, 5000)
 Config.FadeDurationMs = clampInteger(Config.FadeDurationMs, 350, 0, 5000)
@@ -112,11 +112,9 @@ RegisterCommand(Config.CommandName, function(source, args)
     if not src or src <= 0 then print('[reloadworld] このコマンドはゲーム内プレイヤー専用です。'); return end
     local arg = type(args[1]) == 'string' and args[1]:lower() or ''
     if arg == 'fixed' or arg == 'notfixed' then handleFeedback(src, arg); return end
-    if arg ~= '' then notify(src, ('使用法: /%s [fixed|notfixed]'):format(Config.CommandName)); return end
+    if arg ~= '' and arg ~= 'enhanced' then notify(src, ('使用法: /%s [enhanced|fixed|notfixed]'):format(Config.CommandName)); return end
     if not hasPermission(src) then notify(src, '実行権限がありません。'); return end
-    -- Keep the previously working enhanced client path unchanged; only the
-    -- public command entry point is now the plain /reloadworld command.
-    local mode = 'enhanced'
+    local mode = arg == 'enhanced' and 'enhanced' or 'normal'
     if mode == 'enhanced' and not Config.EnhancedEnabled then notify(src, '強化モードは無効です。'); return end
     if active[src] then notify(src, 'すでに処理中です。'); return end
     local remaining = (cooldownUntil[src] or 0) - os.time()
@@ -131,7 +129,9 @@ RegisterCommand(Config.CommandName, function(source, args)
     local cooldown = mode == 'enhanced' and Config.EnhancedCooldownSeconds or Config.NormalCooldownSeconds
     cooldownUntil[src] = os.time() + cooldown
     active[src] = { reload_id = reloadId, mode = mode, started_at = os.time() }
-    notify(src, 'ワールド再読み込みを開始します。完了まで約20秒以上かかります。')
+    if mode == 'enhanced' then
+        notify(src, '強化モードを開始します。プレイヤースイッチと強制ストリーミングのため約20秒以上かかります。')
+    end
     local linked, diagnosticId = false, nil
     local ok, result = invokeWorlddiag('BeginReload', src, {
         reload_id = reloadId, mode = mode, server_started_utc = os.date('!%Y-%m-%dT%H:%M:%SZ') })
@@ -173,7 +173,7 @@ RegisterNetEvent('reloadworld:server:complete', function(reloadId, data)
     history[src] = { reload_id = reloadId, diagnostic_id = current.diagnostic_id,
         completed_at = os.time(), feedback_expires_at = os.time() + Config.FeedbackExpirySeconds }
     invokeWorlddiag('EndReload', src, result)
-    local seconds, label = result.duration_ms / 1000.0, 'ワールド再読み込み'
+    local seconds, label = result.duration_ms / 1000.0, current.mode == 'enhanced' and '強化モード' or '通常モード'
     if result.error_code == 'vehicle_unsafe' or result.error_code == 'vehicle_state_changed' then
         notify(src, '車両から降り、乗降動作が終わってから実行してください。')
     elseif result.error_code == 'screen_transition_active' then
