@@ -112,9 +112,9 @@ RegisterCommand(Config.CommandName, function(source, args)
     if not src or src <= 0 then print('[reloadworld] このコマンドはゲーム内プレイヤー専用です。'); return end
     local arg = type(args[1]) == 'string' and args[1]:lower() or ''
     if arg == 'fixed' or arg == 'notfixed' then handleFeedback(src, arg); return end
-    if arg ~= '' and arg ~= 'enhanced' then notify(src, ('使用法: /%s [enhanced|fixed|notfixed]'):format(Config.CommandName)); return end
+    if arg ~= '' then notify(src, ('使用法: /%s [fixed|notfixed]'):format(Config.CommandName)); return end
     if not hasPermission(src) then notify(src, '実行権限がありません。'); return end
-    local mode = arg == 'enhanced' and 'enhanced' or 'normal'
+    local mode = 'enhanced'
     if mode == 'enhanced' and not Config.EnhancedEnabled then notify(src, '強化モードは無効です。'); return end
     if active[src] then notify(src, 'すでに処理中です。'); return end
     local remaining = (cooldownUntil[src] or 0) - os.time()
