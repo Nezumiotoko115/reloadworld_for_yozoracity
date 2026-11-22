@@ -9,7 +9,7 @@ local function clampInteger(value, default, minimum, maximum)
     return value
 end
 Config.NormalCooldownSeconds = clampInteger(Config.NormalCooldownSeconds, 60, 0, 86400)
-Config.EnhancedCooldownSeconds = clampInteger(Config.EnhancedCooldownSeconds, 120, 0, 86400)
+Config.EnhancedCooldownSeconds = clampInteger(Config.EnhancedCooldownSeconds, 10, 0, 86400)
 Config.FeedbackExpirySeconds = clampInteger(Config.FeedbackExpirySeconds, 300, 10, 86400)
 Config.WorlddiagPreDelayMs = clampInteger(Config.WorlddiagPreDelayMs, 750, 0, 5000)
 Config.FadeDurationMs = clampInteger(Config.FadeDurationMs, 350, 0, 5000)
