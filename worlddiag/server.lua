@@ -300,24 +300,20 @@ exports('EndReload', function(target, result)
                 started = result.stages.enhanced.started == true,
                 loaded = result.stages.enhanced.loaded == true }
         end
-        if type(result.stages.player_switch) == 'table' then
-            reload.stages.player_switch = { attempted = result.stages.player_switch.attempted == true,
-                started = result.stages.player_switch.started == true,
-                out_hold_completed = result.stages.player_switch.out_hold_completed == true,
-                return_started = result.stages.player_switch.return_started == true,
-                completed = result.stages.player_switch.completed == true,
-                forced_stop = result.stages.player_switch.forced_stop == true }
+        if type(result.stages.cold_cycle) == 'table' then
+            reload.stages.cold_cycle = { attempted = result.stages.cold_cycle.attempted == true,
+                focus_set = result.stages.cold_cycle.focus_set == true,
+                scene_started = result.stages.cold_cycle.scene_started == true,
+                scene_loaded = result.stages.cold_cycle.scene_loaded == true,
+                hold_completed = result.stages.cold_cycle.hold_completed == true }
         end
-        if type(result.stages.local_stream) == 'table' then
-            reload.stages.local_stream = { attempted = result.stages.local_stream.attempted == true,
-                focus_set = result.stages.local_stream.focus_set == true,
-                hd_area_set = result.stages.local_stream.hd_area_set == true,
-                load_scene_called = result.stages.local_stream.load_scene_called == true,
-                objects_forced = result.stages.local_stream.objects_forced == true,
-                scene_started = result.stages.local_stream.scene_started == true,
-                scene_loaded = result.stages.local_stream.scene_loaded == true,
-                collision_loaded = result.stages.local_stream.collision_loaded == true,
-                hold_completed = result.stages.local_stream.hold_completed == true }
+        if type(result.stages.return_stream) == 'table' then
+            reload.stages.return_stream = { attempted = result.stages.return_stream.attempted == true,
+                focus_set = result.stages.return_stream.focus_set == true,
+                scene_started = result.stages.return_stream.scene_started == true,
+                scene_loaded = result.stages.return_stream.scene_loaded == true,
+                collision_loaded = result.stages.return_stream.collision_loaded == true,
+                hold_completed = result.stages.return_stream.hold_completed == true }
         end
     end
     enqueue({ type = 'reload_result', diagnostic_id = session.diagnostic_id,
